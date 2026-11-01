@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'de.baeko.timetracker'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'de.baeko.timetracker'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0'
+    }
+}

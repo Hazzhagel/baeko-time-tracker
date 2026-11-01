@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BäKo Time Tracker</title>
+<style>
+body{margin:0;padding:16px;background:#07111f;color:#f3f7fc;font:16px Arial}
+main{max-width:700px;margin:auto}
+header{padding:16px 0;color:#78b6ff}
+h1{font-size:25px;margin:0}
+small{color:#a8b8cc}
+nav{display:flex;gap:6px;flex-wrap:wrap}
+button{background:#152943;color:white;border:1px solid #315174;padding:12px;border-radius:9px;margin:4px 2px}
+.primary{background:#287bd4}
+.card{background:#101f33;border:1px solid #263d5b;border-radius:13px;padding:15px;margin:12px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.metric{background:#0a1829;padding:12px;border-radius:9px}
+.metric strong{display:block;font-size:22px;margin-top:5px}
+input,select{background:#081626;color:white;border:1px solid #315174;padding:10px;border-radius:8px;max-width:100%}
+label{display:block;color:#a8b8cc;margin:12px 0 5px}
+.page{display:none}.page.active{display:block}
+.good{color:#52c59a}.bad{color:#ff7777}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>BÄKO</h1>
+<strong>BäKo Time Tracker</strong><br>
+<small>PRIVATE ARBEITSZEITERFASSUNG</small>
+</header>
+
+<nav>
+<button onclick="show('today')">Heute</button>
+<button onclick="show('history')">Verlauf</button>
+<button onclick="show('absence')">Urlaub & Krankheit</button>
+<button onclick="show('report')">Auswertung</button>
+</nav>
+
+<section id="today" class="page active">
+<div class="card">
+<h2>Arbeitszeit heute</h2>
+<div id="date"></div>
+<div class="grid">
+<div class="metric">Beginn<strong id="startView">—</strong></div>
+<div class="metric">Ende<strong id="endView">—</strong></div>
+<div class="metric">Nettozeit<strong id="netView">0:00</strong></div>
+<div class="metric">Sollzeit<strong id="targetView">—</strong></div>
+</div>
+<button class="primary" onclick="startWork()">Arbeitsbeginn</button>
+<button onclick="endWork()">Arbeitsende</button>
+<button onclick="breakStart()">Pause beginnen</button>
+<button onclick="breakEnd()">Pause beenden</button>
+<p id="status">Noch nicht gestartet</p>
+</div>
+<div class="card">
+<h3>Pausen heute</h3>
+<div id="breaks"></div>
+</div>
+<div class="card">
+<h3>Tageskorrektur</h3>
+<label>Arbeitsbeginn</label>
+<input type="time" id="editStart">
+<label>Arbeitsende</label>
+<input type="time" id="editEnd">
+<button onclick="correctDay()">Zeiten korrigieren</button>
+</div>
+</section>
+
+<section id="history" class="page">
+<div class="card">
+<h2>Verlauf</h2>
+<div id="historyList"></div>
+</div>
+</section>
+
+<section id="absence" class="page">
+<div class="card">
+<h2>Urlaub und Krankheit</h2>
+<label>Art</label>
+<select id="absenceType">
+<option value="Urlaub">Urlaub</option>
+<option value="Krankheit">Krankheit</option>
+</select>
+<label>Datum</label>
+<input type="date" id="absenceDate">
+<button onclick="addAbsence()">Eintragen</button>
+<h3>Urlaubskonto</h3>
+<p>Jahresanspruch: 30 Tage</p>
+<p id="vacationCount">Genommen: 0 Tage</p>
+<p id="vacationLeft">Übrig: 30 Tage</p>
+<div id="absenceList"></div>
+</div>
+</section>
+
+<section id="report" class="page">
+<div class="card">
+<h2>Auswertung</h2>
+<p id="reportText"></p>
+<button onclick="exportBackup()">Backup speichern</button>
+<button onclick="exportCSV()">Excel/CSV exportieren</button>
+<label>Backup wiederherstellen</label>
+<input type="file" id="backupFile" accept=".json">
+<button onclick="importBackup()">Backup importieren</button>
+</div>
+</section>
+</main>
+
+<script>
+const KEY='baekoTimeTracker';
+let data=JSON.parse(localStorage.getItem(KEY)||'{"days":{},"absences":[]}');
+function save(){localStorage.setItem(KEY,JSON.stringify(data))}
+function today(){let d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function day(){return data.days[today()]||(data.days[today()]={start:null,end:null,breaks:[]})}
+function time(){return new Date().toISOString()}
+function clock(x){return x?new Date(x).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):'—'}
+function minutes(x){return Math.max(0,Math.round(x/60000))}
+function format(n){return Math.floor(n/60)+':'+String(n%60).padStart(2,'0')}
+function target(date){let w=new Date(date+'T12:00:00').getDay();return w>=1&&w<=4?465:w===5?450:0}
+function net(d){if(!d.start)return 0;let end=d.end?new Date(d.end).getTime():Date.now();let pause=0;d.breaks.forEach(b=>{if(b.start){let e=b.end?new Date(b.end).getTime():Date.now();pause+=Math.max(0,e-new Date(b.start).getTime())}});return minutes(end-new Date(d.start).getTime()-pause)}
+function startWork(){let d=day();if(d.start)return alert('Arbeitsbeginn ist bereits erfasst.');d.start=time();save();render()}
+function endWork(){let d=day();if(!d.start)return alert('Bitte zuerst Arbeitsbeginn erfassen.');if(d.breaks.some(b=>!b.end))return alert('Bitte zuerst die Pause beenden.');if(d.end)return alert('Arbeitsende ist bereits erfasst.');d.end=time();save();render()}
+function breakStart(){let d=day();if(!d.start||d.end)return alert('Bitte zuerst Arbeitsbeginn erfassen.');if(d.breaks.some(b=>!b.end))return alert('Eine Pause läuft bereits.');d.breaks.push({start:time(),end:null});save();render()}
+function breakEnd(){let b=day().breaks.find(x=>!x.end);if(!b)return alert('Keine laufende Pause.');b.end=time();save();render()}
+function correctDay(){let d=day();let date=today();if(document.getElementById('editStart').value)d.start=new Date(date+'T'+document.getElementById('editStart').value).toISOString();if(document.getElementById('editEnd').value)d.end=new Date(date+'T'+document.getElementById('editEnd').value).toISOString();save();render();alert('Zeiten gespeichert.')}
+function show(id){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');render()}
+function addAbsence(){let date=document.getElementById('absenceDate').value;if(!date)return alert('Bitte Datum auswählen.');if(data.absences.some(x=>x.date===date))return alert('Für diesen Tag gibt es bereits einen Eintrag.');data.absences.push({date,type:document.getElementById('absenceType').value});save();render()}
+function render(){
+let d=day(),t=target(today());
+document.getElementById('date').textContent=new Date().toLocaleDateString('de-DE',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+document.getElementById('startView').textContent=clock(d.start);
+document.getElementById('endView').textContent=clock(d.end);
+document.getElementById('netView').textContent=format(net(d));
+document.getElementById('targetView').textContent=t?format(t):'—';
+document.getElementById('status').textContent=d.end?'Arbeit abgeschlossen':d.start?'Arbeitszeit läuft':'Noch nicht gestartet';
+document.getElementById('breaks').innerHTML=d.breaks.map(b=>clock(b.start)+' – '+clock(b.end)).join('<br>')||'Noch keine Pausen erfasst.';
+document.getElementById('historyList').innerHTML=Object.keys(data.days).sort().reverse().map(k=>{let x=data.days[k];return '<p>'+k+' · Beginn '+clock(x.start)+' · Ende '+clock(x.end)+' · Netto '+format(net(x))+'</p>'}).join('')||'Noch keine Einträge.';
+let v=data.absences.filter(x=>x.type==='Urlaub'&&x.date.startsWith(today().slice(0,4))&&new Date(x.date+'T12:00:00').getDay()%6!==0).length;
+document.getElementById('vacationCount').textContent='Genommen: '+v+' Tage';
+document.getElementById('vacationLeft').textContent='Übrig: '+Math.max(0,30-v)+' Tage';
+document.getElementById('absenceList').innerHTML=data.absences.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(x=>'<p>'+x.date+' · '+x.type+'</p>').join('');
+let keys=Object.keys(data.days),actual=keys.reduce((s,k)=>s+net(data.days[k]),0),goal=keys.reduce((s,k)=>s+target(k),0);
+document.getElementById('reportText').textContent='Erfasste Tage: '+keys.length+' · Ist: '+format(actual)+' · Soll: '+format(goal)+' · Differenz: '+format(Math.abs(actual-goal))+(actual>=goal?' Plus':' Minus');
+}
+function download(name,content,type){let a=document.createElement('a');let u=URL.createObjectURL(new Blob([content],{type}));a.href=u;a.download=name;a.click();URL.revokeObjectURL(u)}
+function exportBackup(){download('baeko-backup.json',JSON.stringify(data,null,2),'application/json')}
+function exportCSV(){let rows=[['Datum','Beginn','Ende','Netto Minuten']];Object.keys(data.days).sort().forEach(k=>{let d=data.days[k];rows.push([k,d.start||'',d.end||'',net(d)])});download('baeko-zeiterfassung.csv',rows.map(r=>r.join(';')).join('\n'),'text/csv')}
+function importBackup(){let f=document.getElementById('backupFile').files[0];if(!f)return alert('Bitte zuerst eine Backup-Datei auswählen.');let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(!x.days||!x.absences)throw 0;data=x;save();render();alert('Backup importiert.')}catch(e){alert('Diese Datei ist kein gültiges Backup.')}};r.readAsText(f)}
+render();
+setInterval(render,30000);
+</script>
+</body>
+</html>
